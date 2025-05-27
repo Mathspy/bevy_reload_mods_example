@@ -1,16 +1,20 @@
 #![allow(clippy::type_complexity)]
 
+use std::borrow::Cow;
+
 use bevy::{
     DefaultPlugins,
     app::{App, Startup, Update},
     color::Color,
     core_pipeline::core_2d::Camera2d,
     ecs::{
+        archetype::ArchetypeComponentId,
         children,
-        component::Component,
-        query::{Changed, With},
+        component::{Component, ComponentId, Tick},
+        query::{Access, Changed, FilteredAccessSet, With},
         spawn::SpawnRelated,
-        system::{Commands, Query, Single},
+        system::{Commands, Query, Single, System},
+        world::{World, unsafe_world_cell::UnsafeWorldCell},
     },
     ui::{
         AlignItems, BorderColor, Interaction, JustifyContent, Node, UiRect, Val,
@@ -36,6 +40,96 @@ struct ImagineFunction {
     stage: ImagineStage,
     name: String,
     body: Vec<ImagineStatement>,
+
+    last_run: Tick,
+}
+
+impl System for ImagineFunction {
+    type In = ();
+    type Out = ();
+
+    fn name(&self) -> Cow<'static, str> {
+        self.name.to_string().into()
+    }
+
+    fn component_access(&self) -> &Access<ComponentId> {
+        const EMPTY_ACCESS: &Access<ComponentId> = &Access::new();
+
+        EMPTY_ACCESS
+    }
+
+    fn component_access_set(&self) -> &FilteredAccessSet<ComponentId> {
+        const EMPTY_ACCESS: &FilteredAccessSet<ComponentId> = &FilteredAccessSet::new();
+
+        EMPTY_ACCESS
+    }
+
+    fn archetype_component_access(&self) -> &Access<ArchetypeComponentId> {
+        const EMPTY_ACCESS: &Access<ArchetypeComponentId> = &Access::new();
+
+        EMPTY_ACCESS
+    }
+
+    fn is_send(&self) -> bool {
+        true
+    }
+
+    fn is_exclusive(&self) -> bool {
+        false
+    }
+
+    fn has_deferred(&self) -> bool {
+        false
+    }
+
+    unsafe fn run_unsafe(
+        &mut self,
+        _input: bevy::ecs::system::SystemIn<'_, Self>,
+        _world: bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell,
+    ) -> Self::Out {
+        self.body.iter().for_each(|statement| match statement {
+            ImagineStatement::Print { text } => println!("{text}"),
+        })
+    }
+
+    fn apply_deferred(&mut self, _world: &mut bevy::ecs::world::World) {
+        // do nothing
+    }
+
+    fn queue_deferred(&mut self, _world: bevy::ecs::world::DeferredWorld) {
+        // do nothing
+    }
+
+    unsafe fn validate_param_unsafe(
+        &mut self,
+        _world: UnsafeWorldCell,
+    ) -> Result<(), bevy::ecs::system::SystemParamValidationError> {
+        Ok(())
+    }
+
+    fn initialize(&mut self, _world: &mut World) {
+        // do nothing
+    }
+
+    fn update_archetype_component_access(&mut self, _world: UnsafeWorldCell) {
+        // do nothing
+    }
+
+    fn check_change_tick(&mut self, this_run: Tick) {
+        let age = this_run.get().wrapping_sub(self.last_run.get());
+
+        if age > Tick::MAX.get() {
+            self.last_run = Tick::new(self.last_run.get().wrapping_sub(Tick::MAX.get()));
+        }
+    }
+
+    fn get_last_run(&self) -> Tick {
+        self.last_run
+    }
+
+    fn set_last_run(&mut self, last_run: Tick) {
+        self.last_run = last_run
+    }
 }
 
 #[derive(Debug)]
@@ -112,6 +206,8 @@ impl ImagineFile {
                     stage,
                     name: name.to_string(),
                     body: statements,
+
+                    last_run: Tick::default(),
                 },
             ))
         }
