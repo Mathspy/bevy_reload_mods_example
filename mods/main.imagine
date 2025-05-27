@@ -1,0 +1,4 @@
+#[Update]
+fn print_hello() {
+	print "hello"
+}
