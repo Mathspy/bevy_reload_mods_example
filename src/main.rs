@@ -1,10 +1,10 @@
 #![allow(clippy::type_complexity)]
 
-use std::borrow::Cow;
+use std::{borrow::Cow, fs::File};
 
 use bevy::{
     DefaultPlugins,
-    app::{App, Startup, Update},
+    app::{App, Last, Startup, Update},
     color::Color,
     core_pipeline::core_2d::Camera2d,
     ecs::{
@@ -12,6 +12,7 @@ use bevy::{
         children,
         component::{Component, ComponentId, Tick},
         query::{Access, Changed, FilteredAccessSet, With},
+        schedule::ScheduleLabel,
         spawn::SpawnRelated,
         system::{Commands, Query, Single, System},
         world::{World, unsafe_world_cell::UnsafeWorldCell},
@@ -217,14 +218,35 @@ impl ImagineFile {
 
         Ok(ImagineFile { items })
     }
+
+    fn apply(self, app: &mut App) {
+        self.items
+            .into_iter()
+            .for_each(|function| match function.stage {
+                ImagineStage::Update => {
+                    app.add_systems(Update, function);
+                }
+                ImagineStage::Last => {
+                    app.add_systems(Last, function);
+                }
+            });
+    }
 }
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
+    let file = std::fs::read_to_string("./mods/main.imagine")
+        .expect("main.imagine to exist in mods folder");
+    let file = ImagineFile::parse(&file).expect("invalid imagine file");
+
+    let mut app = App::new();
+
+    app.add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(Update, button_clicked)
-        .run();
+        .add_systems(Update, button_clicked);
+
+    file.apply(&mut app);
+
+    app.run();
 }
 
 #[derive(Component)]
