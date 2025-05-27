@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use bevy::{
     DefaultPlugins,
     app::{App, Startup, Update},
@@ -5,9 +7,10 @@ use bevy::{
     core_pipeline::core_2d::Camera2d,
     ecs::{
         children,
+        component::Component,
         query::{Changed, With},
         spawn::SpawnRelated,
-        system::{Commands, Query},
+        system::{Commands, Query, Single},
     },
     ui::{
         AlignItems, BorderColor, Interaction, JustifyContent, Node, UiRect, Val,
@@ -24,12 +27,16 @@ fn main() {
         .run();
 }
 
+#[derive(Component)]
+struct ButtonText;
+
 fn button_clicked(
     mut interaction_query: Query<&Interaction, (Changed<Interaction>, With<Button>)>,
+    mut text: Single<&mut Text, With<ButtonText>>,
 ) {
     for interaction in &mut interaction_query {
         if *interaction == Interaction::Pressed {
-            println!("Pressed!");
+            text.0 = "Reloading...".to_string();
         }
     }
 }
@@ -56,7 +63,7 @@ fn setup(mut commands: Commands) {
                 ..default()
             },
             BorderColor(Color::BLACK),
-            children![(Text::new("Reload Mods"),)]
+            children![(Text::new("Reload Mods"), ButtonText)]
         )],
     ));
 }
