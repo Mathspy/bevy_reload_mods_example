@@ -2,3 +2,8 @@
 fn print_hello() {
 	print "hello"
 }
+
+#[Last]
+fn print_yay() {
+	print "yay"
+}

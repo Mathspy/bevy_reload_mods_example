@@ -4,15 +4,16 @@ use std::{borrow::Cow, fs::File};
 
 use bevy::{
     DefaultPlugins,
-    app::{App, Last, Startup, Update},
+    app::{App, AppReload, AppReloader, IsInitialized, Last, Main, Startup, Update},
     color::Color,
     core_pipeline::core_2d::Camera2d,
     ecs::{
         archetype::ArchetypeComponentId,
         children,
         component::{Component, ComponentId, Tick},
+        event::EventWriter,
         query::{Access, Changed, FilteredAccessSet, With},
-        schedule::ScheduleLabel,
+        schedule::Schedules,
         spawn::SpawnRelated,
         system::{Commands, Query, Single, System},
         world::{World, unsafe_world_cell::UnsafeWorldCell},
@@ -233,18 +234,44 @@ impl ImagineFile {
     }
 }
 
-fn main() {
+// This function and the fact we are recreating the app is a hack around the fact that systems can't
+// currently be removed from schedules
+//
+// I think the right API for this is something that _consumes_ the `Schedules` and returns an
+// iterator that can be filtered/modified (containing systems and their run conditions etc) and then
+// `Schedules` should be reconstructable from that iterator
+fn build_app(app: &mut App) {
     let file = std::fs::read_to_string("./mods/main.imagine")
         .expect("main.imagine to exist in mods folder");
     let file = ImagineFile::parse(&file).expect("invalid imagine file");
 
-    let mut app = App::new();
+    file.apply(app);
 
     app.add_plugins(DefaultPlugins)
+        .insert_resource(AppReloader(Box::new(|current_app| {
+            let mut new_app = App::new();
+            new_app.world_mut().init_resource::<IsInitialized>();
+
+            build_app(&mut new_app);
+
+            let mut updated_schedules = new_app.world_mut().remove_resource::<Schedules>().unwrap();
+            if let Some(new_main_schedule) = updated_schedules.get_mut(Main) {
+                let mut old_schedules = current_app.world_mut().resource_mut::<Schedules>();
+                let old_main_schedule = old_schedules
+                    .get_mut(Main)
+                    .expect("new world has main but old one doesn't");
+
+                std::mem::swap(new_main_schedule, old_main_schedule);
+            }
+            current_app.insert_resource(updated_schedules);
+        })))
         .add_systems(Startup, setup)
         .add_systems(Update, button_clicked);
+}
 
-    file.apply(&mut app);
+fn main() {
+    let mut app = App::new();
+    build_app(&mut app);
 
     app.run();
 }
@@ -255,10 +282,15 @@ struct ButtonText;
 fn button_clicked(
     mut interaction_query: Query<&Interaction, (Changed<Interaction>, With<Button>)>,
     mut text: Single<&mut Text, With<ButtonText>>,
+    mut app_reload: EventWriter<AppReload>,
 ) {
     for interaction in &mut interaction_query {
         if *interaction == Interaction::Pressed {
             text.0 = "Reloading...".to_string();
+
+            app_reload.write(AppReload);
+        } else {
+            text.0 = "Reload Mods".to_string();
         }
     }
 }
